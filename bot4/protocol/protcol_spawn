@@ -1,0 +1,70 @@
+from bot4.protocol.protocol_auth import Protocol_auth
+from bot4.protocol.protocol import create_thread
+from bot4.types.settings import Settings
+from bot4.types.buffer.v1_19_1 import Buffer1_19_1
+from time import sleep
+from threading import Barrier
+
+
+class Protocol_spawn(Protocol_auth):
+    def __init__(self, settings: Settings):
+        super().__init__(settings)
+        self.position_look: list[float] = [0.0, 0.0, 0.0, 0.0, 0.0]
+
+    def flag_to_num(self, flag: int):
+        for i in range(5):
+            if (flag >> i) == 1:
+                return i
+
+    def setup(self):
+        super().setup()
+        br = Barrier(2)
+
+        @self.on('Keep Alive (clientbound)')
+        def keep_alive(buff: Buffer1_19_1):
+            self.send_packet('Keep Alive (serverbound)', buff.read())
+
+        @create_thread
+        def update_player_inc():
+            while not self.is_close:
+                sleep(1 / 20)
+                self.send_packet('Client Status', self.buff_type.pack('?', True))
+        
+        update_player_inc()
+
+        @self.once('Player Position And Look (clientbound)')
+        def wrap(buff: Buffer1_19_1):
+            def position_look(buff: Buffer1_19_1):
+                position = buff.unpack('dddff')
+                flag = buff.unpack('B')
+
+                for i in range(5):
+                    if (flag >> i) == 1:
+                        self.position_look[i] += position[i]
+                    else:
+                        self.position_look[i] = position[i]
+
+                self.send_packet('Teleport Confirm', buff.read())
+            position_look(buff)
+            self.on('Player Position And Look (clientbound)', position_look)
+            br.wait()
+
+        br.wait()
+        @create_thread
+        def update_position_and_look():
+            while not self.is_close:
+                sleep(1)
+                self.send_packet(
+                    "Player Position And Rotation (serverbound)",
+                    self.buff_type.pack(
+                        'dddff?',
+                        self.position_look[0],
+                        self.position_look[1] - 1.62,
+                        self.position_look[2],
+                        self.position_look[3],
+                        self.position_look[4],
+                        True))
+        
+        update_position_and_look()
+
+

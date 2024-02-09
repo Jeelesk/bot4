@@ -1,0 +1,38 @@
+from bot4.protocol.protocol import Protocol
+from bot4.types.settings import Settings
+from bot4.types.buffer.v1_19_1 import Buffer1_19_1
+from threading import Barrier
+
+
+class Protocol_auth(Protocol):
+    def __init__(self, settings: Settings):
+        super().__init__(settings)
+        self.profile = settings.profile
+        self.on('Set Compression', self.set_compression)
+
+    def set_compression(self, byff: Buffer1_19_1):
+        self.compression_threshold = byff.unpack_varint()
+
+    def setup(self):
+        br = Barrier(2)
+
+        super().setup()
+        self.send_packet('Handshake',
+                    self.buff_type.pack_varint(754),
+                    self.buff_type.pack_string('mc.prostocraft.ru'),
+                    self.buff_type.pack('H', 25565),
+                    self.buff_type.pack_varint(2))
+        self.name_id.state = 2
+        
+        if not self.profile.online:
+            @self.once('Login Success')
+            def success(byff: Buffer1_19_1):
+                self.uuid = byff.unpack_uuid()
+                self.name_id.state = 3
+                br.wait()
+
+        self.send_packet('Login Start',
+                self.buff_type.pack_string(self.profile.display_name))
+        br.wait()
+
+
