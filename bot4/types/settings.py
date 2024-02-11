@@ -8,6 +8,7 @@ class Settings:
     ip: str = 'mc.prostocraft.ru'
     port: int = 25565
     timeout: float = 30.0
+    daemon: bool = True
 
 
 @dataclass

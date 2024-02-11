@@ -92,7 +92,7 @@ class Protocol_spawn(Protocol_auth):
         @self.once('Player Position And Look (clientbound)')
         def positon(buff: Buffer1_19_1):
             self.position_look(buff)
-            @create_thread
+            @create_thread(daemon=self.daemon)
             def update_position_and_look():
                 while not self.is_close:
                     sleep(1)
@@ -116,7 +116,7 @@ class Protocol_spawn(Protocol_auth):
         self.send_packet('Client Settings', b'\x05ru_ru\x10\x00\x01\x7f\x01')
         self.send_packet('Plugin Message (serverbound)', b'\x0fminecraft:brand\x06fabric')
 
-        @create_thread
+        @create_thread(daemon=self.daemon)
         def update_player_inc():
             while not self.is_close:
                 sleep(1 / 20)

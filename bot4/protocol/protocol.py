@@ -8,28 +8,28 @@ import logging
 
 logging.basicConfig()
 
-def create_thread(func = None, return_thread = False):
+def create_thread(func = None, return_thread = False, daemon=True):
     if func:
         if not return_thread:
             def w(*args, **kwargs) -> threading.Thread:
-                th = threading.Thread(target=func, args=args, kwargs=kwargs)
+                th = threading.Thread(target=func, args=args, kwargs=kwargs, daemon=daemon)
                 th.start()
         else:
             def w(*args, **kwargs) -> threading.Thread:
-                th = threading.Thread(target=func, args=args, kwargs=kwargs)
+                th = threading.Thread(target=func, args=args, kwargs=kwargs, daemon=daemon)
                 th.start()
                 return th
     else:
         if not return_thread:
             def w(func):
                 def ww(*args, **kwargs) -> threading.Thread:
-                    th = threading.Thread(target=func, args=args, kwargs=kwargs)
+                    th = threading.Thread(target=func, args=args, kwargs=kwargs, daemon=daemon)
                     th.start()
                 return ww
         else:
             def w(func):
                 def ww(*args, **kwargs) -> threading.Thread:
-                    th = threading.Thread(target=func, args=args, kwargs=kwargs)
+                    th = threading.Thread(target=func, args=args, kwargs=kwargs, daemon=daemon)
                     th.start()
                     return th
                 return ww
@@ -52,15 +52,17 @@ class Protocol:
         self.logger.setLevel(self.__log_level)
         self.lock_data_received = threading.Event()
 
+        self.settings = settings
         self.ip = settings.ip
         self.port = settings.port
         self.timeout = settings.timeout
+        self.daemon = settings.daemon
         self.name_id = Get_packet(settings.version, self.logger)
         self.buff_type = self.get_buff_type(self.name_id.protocol_version)
         self.recv_buff = Buffer1_7()
         self.cipher = Cipher()
 
-        self.dispatcher = Dispatcher(getattr(self, 'unheandler', None))
+        self.dispatcher = Dispatcher(getattr(self, 'unheandler', None), self.daemon)
         self.name_id.state_updates.append(self.dispatcher)
         self.on = self.dispatcher.on
         self.once = self.dispatcher.once
@@ -192,7 +194,7 @@ class Protocol:
             self.is_close = False
             self.soket = socket.create_connection((self.ip, self.port), timeout=self.timeout)
             self.logger.info(f'Client connected to "{self.ip}:{self.port}"')
-            self.d_received = threading.Thread(target=self.data_received)
+            self.d_received = threading.Thread(target=self.data_received, daemon=self.daemon)
             self.lock_data_received.set()
             self.d_received.start()
             self.setup()

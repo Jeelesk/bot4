@@ -30,7 +30,7 @@ class Dispatcher:
     state = 0
     lock: Event
 
-    def __new__(cls, unheandler = None):
+    def __new__(cls, unheandler = None, daemon=True):
         lock = threading.Event()
         if unheandler is None:
             def packet_received(self, event: str, buff: bytes):
@@ -38,7 +38,7 @@ class Dispatcher:
                 callback = self.once_d.get(event, callback)
                 
                 if not callback is None:
-                    threading.Thread(target=callback, args=(buff,), daemon=True).start()
+                    threading.Thread(target=callback, args=(buff,), daemon=daemon).start()
                 else:
                     lock.set()
             cls.packet_received0 = packet_received
@@ -52,9 +52,9 @@ class Dispatcher:
                 callback = self.once_d.get(event, callback)
                 
                 if not callback is None:
-                    threading.Thread(target=callback, args=(buff,), daemon=True).start()
+                    threading.Thread(target=callback, args=(buff,), daemon=daemon).start()
                 else:
-                    threading.Thread(target=unheandlerr, args=(event, buff), daemon=True).start()
+                    threading.Thread(target=unheandlerr, args=(event, buff), daemon=daemon).start()
             cls.packet_received0 = packet_received
         
         self = object().__new__(cls)
