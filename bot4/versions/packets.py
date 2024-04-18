@@ -1,9 +1,18 @@
 import json, threading, os
-from logging import Logger 
+from logging import Logger
 from threading import Event
-
+from bot4.types.buffer.v1_19_1 import Buffer1_19_1
 
 version_path = os.path.dirname(__file__)
+
+
+class On(dict):
+    def __setitem__(self, k, v):
+        values = super().get(k)
+        if isinstance(values, list):
+            values.append(v)
+        else:
+            super().__setitem__(k, [v])
 
 
 class Once(dict):
@@ -12,33 +21,49 @@ class Once(dict):
         del self[key]
         return item
     
-    def get(self, *args):
-        item = dict.get(self, *args)
-        if len(args) > 1:
-            if not item is args[1]:
-                del self[args[0]]
+    def __setitem__(self, k, v):
+        values = super().get(k)
+        if isinstance(values, list):
+            values.append(v)
         else:
-            if not item is None:
-                del self[args[0]]
+            super().__setitem__(k, [v])
 
-        return item
+    def get(self, key, default):
+        item = super().get(key)
+        if not item is None:
+            del self[key]
+            return item
+        else:
+            return default
+        # item = dict.get(self, *args)
+        # if len(args) > 1:
+        #     if not item is args[1]:
+        #         del self[args[0]]
+        # else:
+        #     if not item is None:
+        #         del self[args[0]]
+
+        # return item
 
 
 class Dispatcher:
-    on_d: dict
-    once_d: Once
+    on_d: On[str, list]
+    once_d: Once[str, list]
     state = 0
     lock: Event
 
     def __new__(cls, unheandler = None, daemon=True):
         lock = threading.Event()
         if unheandler is None:
-            def packet_received(self, event: str, buff: bytes):
+            def packet_received(self, event: str, buff: Buffer1_19_1):
                 callback = self.on_d.get(event)
                 callback = self.once_d.get(event, callback)
                 
                 if not callback is None:
-                    threading.Thread(target=callback, args=(buff,), daemon=daemon).start()
+                    for c in callback:
+                        lock.clear()
+                        threading.Thread(target=c, args=(buff.copy(),), daemon=daemon).start()
+                        lock.wait()
                 else:
                     lock.set()
             cls.packet_received0 = packet_received
@@ -47,14 +72,17 @@ class Dispatcher:
                 lock.set()
                 unheandler(event, buff)
 
-            def packet_received(self, event: str, buff: bytes):
+            def packet_received(self, event: str, buff: Buffer1_19_1):
                 callback = self.on_d.get(event)
                 callback = self.once_d.get(event, callback)
                 
                 if not callback is None:
-                    threading.Thread(target=callback, args=(buff,), daemon=daemon).start()
+                    for c in callback:
+                        lock.clear()
+                        threading.Thread(target=c, args=(buff.copy(),), daemon=daemon).start()
+                        lock.wait()
                 else:
-                    threading.Thread(target=unheandlerr, args=(event, buff), daemon=daemon).start()
+                    threading.Thread(target=unheandlerr, args=(event, buff.copy()), daemon=daemon).start()
             cls.packet_received0 = packet_received
         
         self = object().__new__(cls)
@@ -62,7 +90,7 @@ class Dispatcher:
         self.lock = lock
         del cls.packet_received0
         
-        self.on_d = {}
+        self.on_d = On()
         self.once_d = Once()
         self.__events_to_status = {0: (self.on_d, self.once_d)}
         return self
@@ -71,7 +99,7 @@ class Dispatcher:
         self.state = state
         events = self.__events_to_status.get(state)
         if events is None:
-            self.on_d = {}
+            self.on_d = On()
             self.once_d = Once()
             self.__events_to_status[state] = (self.on_d, self.once_d)
         else:
@@ -83,7 +111,7 @@ class Dispatcher:
                 def ww(byff):
                     self.lock.set()
                     _callback(byff)
-
+                ww.__name__ = _callback.__name__
                 self.on_d[event] = ww
                 return _callback
             return w
@@ -91,7 +119,7 @@ class Dispatcher:
             def ww(byff):
                 self.lock.set()
                 _callback(byff)
-
+            ww.__name__ = _callback.__name__
             self.on_d[event] = ww
 
     def once(self, event: str, _callback = None):
@@ -100,7 +128,7 @@ class Dispatcher:
                 def ww(byff):
                     self.lock.set()
                     _callback2(byff)
-
+                ww.__name__ = _callback2.__name__
                 self.once_d[event] = ww
                 return _callback2
             return w
@@ -108,7 +136,7 @@ class Dispatcher:
             def ww(byff):
                     self.lock.set()
                     _callback(byff)
-
+            ww.__name__ = _callback.__name__
             self.once_d[event] = ww
 
 
@@ -138,7 +166,7 @@ class Get_packet:
     if os.name == 'nt':
         path_to_versions = f'{version_path}\\{file_version_protocols}'
     else:
-        path_to_versions = f'{version_path}/{cls.file_version_protocols}'
+        path_to_versions = f'{version_path}/{file_version_protocols}'
 
 
     @classmethod
@@ -183,7 +211,13 @@ class Get_packet:
     def __get_packets(cls, protocol_version: int) -> list[list[dict], list[dict]]:
         packs = cls.packs.get(protocol_version)
         if packs is None:
-            with open('{}\\{}'.format(version_path, f'{protocol_version}.json'), 'r', encoding='utf-8') as file:
+
+            if os.name == 'nt':
+                path_to_json = '{}\\{}'.format(version_path, f'{protocol_version}.json')
+            else:
+                path_to_json = '{}/{}'.format(version_path, f'{protocol_version}.json')
+
+            with open(path_to_json, 'r', encoding='utf-8') as file:
                 packs = json.load(file)
                 for l1 in packs:
                     for l2 in l1:

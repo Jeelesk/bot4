@@ -23,6 +23,11 @@ class Buffer1_7(object):
     def __len__(self):
         return len(self.buff) - self.pos
 
+    def copy(self):
+        self2 = self.__class__(self.buff)
+        self2.pos = self.pos
+        return self2
+
     def add(self, data):
         """
         Add some bytes to the end of the buffer.
@@ -146,7 +151,11 @@ class Buffer1_7(object):
         """
         Unpack an array of bytes preceded by variant denoting the array length.
         """
-        return self.read(self.unpack_varint())
+        try:
+            return self.read(self.unpack_varint())
+        except BufferUnderrun:
+            self.pos -= 1
+            return self.read()
 
     # Optional ----------------------------------------------------------------
 

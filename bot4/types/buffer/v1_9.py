@@ -46,7 +46,7 @@ class Buffer1_9(Buffer1_7):
     def pack_chunk_section_array(cls, data):
         return cls.pack_varint(len(data) // 8) + data
 
-    def unpack_chunk(self, bitmask, overworld=True):
+    def unpack_chunk(self, bitmask: int, overworld=True):
         sections = []
         for idx in range(16):
             if bitmask & (1 << idx):

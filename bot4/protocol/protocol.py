@@ -4,9 +4,11 @@ from bot4.net.crypto import Cipher
 from bot4.types.settings import Settings, Server_Settings
 from bot4.versions.packets import Get_packet, Dispatcher
 import logging
+socket.herror
+socket.error
+socket.timeout
 
-
-logging.basicConfig()
+logging.basicConfig(encoding='utf-8')  #filename='log.log', filemode='w'
 
 def create_thread(func = None, return_thread = False, daemon=True):
     if func:
@@ -45,11 +47,13 @@ class Protocol:
     compression_threshold = -1
     soket = None
     is_close = True
-    __log_level = logging.INFO
+    log_level_defult = logging.INFO
+    recv_buff = Buffer1_7
 
     def __init__(self, settings: Settings):
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(self.__log_level)
+
+        self.logger.setLevel(self.log_level_defult)
         self.lock_data_received = threading.Event()
 
         self.settings = settings
@@ -59,7 +63,6 @@ class Protocol:
         self.daemon = settings.daemon
         self.name_id = Get_packet(settings.version, self.logger)
         self.buff_type = self.get_buff_type(self.name_id.protocol_version)
-        self.recv_buff = Buffer1_7()
         self.cipher = Cipher()
 
         self.dispatcher = Dispatcher(getattr(self, 'unheandler', None), self.daemon)
@@ -80,9 +83,9 @@ class Protocol:
         while not self.is_close:
             try:
                 data = self.soket.recv(4096)
-
                 if data == b'':
-                    self.close()
+                    if not self.is_close:
+                        self.close()
                     break
                 
                 data = self.cipher.decrypt(data)
@@ -117,8 +120,9 @@ class Protocol:
                     self.dispatcher.packet_received(name, buff)
                     self.dispatcher.lock.wait()
                     
-            except (ConnectionAbortedError, OSError):
-                self.close()
+            except (socket.gaierror, socket.error, socket.herror, OSError):
+                if not self.is_close:
+                    self.close()
                 break
 
     def unpack_packet(self, size: int):
@@ -133,54 +137,79 @@ class Protocol:
 
         return buff
 
-    def close(self):
+    def clear_dispatcher(self):
+        for i in range(3, -1, -1):
+            self.name_id.state = i
+            self.dispatcher.on_d.clear()
+            self.dispatcher.once_d.clear()
+
+    def close(self, callback = None, *args_callback, **kvargs_callback):
         if not self.is_close:
             self.is_close = True
+            # self.soket = self.soket.close()
             self.soket.close()
+            self.compression_threshold = -1
+            self.recv_buff = Buffer1_7()
+            self.clear_dispatcher()
             self.logger.info('Client protocol close')
-
+            if not callback is None:
+                callback(*args_callback, **kvargs_callback)
+    
     def send_packet(self, name: str, *data: tuple[bytes]):
         data = b"".join(data)
         self.lock_data_received.wait()
         # Prepend ident
-        data = self.buff_type.pack_varint(self.name_id.upload[name]) + data
+        try:
+            data = self.buff_type.pack_varint(self.name_id.upload[name]) + data
 
-        # Pack packet
-        data = self.buff_type.pack_packet(data, self.compression_threshold)
+            # Pack packet
+            data = self.buff_type.pack_packet(data, self.compression_threshold)
 
-        # Encrypt
-        data = self.cipher.encrypt(data)
+            # Encrypt
+            data = self.cipher.encrypt(data)
 
-        # Send
-        if not self.is_close:
-            try:
-                self.soket.send(data)
-                self.logger.debug(f'Packet "{name}" sended')
-            except (ConnectionAbortedError, OSError):
-                self.logger.error(f'Packet: "{name}" not send, socket is closed')
-                # raise ProtocolError(f'Packet: "{name}" not send, socket is closed')
+            # Send
+            if not self.is_close:
+                try:
+                    self.soket.send(data)
+                    self.logger.debug(f'Packet "{name}" sended')
+
+                except (ConnectionAbortedError, OSError, socket.gaierror, socket.error, socket.herror):
+                    self.logger.error(f'Packet: "{name}" not send, socket is closed')
+                    if not self.is_close:
+                        self.close()
+        except KeyError:
+            self.logger.critical(f'Packet: "{name}" not send, not found in self.name_id.upload, state: {self.name_id.state}, self.is_close: {self.is_close}')
+            if not self.is_close:
+                self.close()
 
     def send_packet_no_wait(self, name: str, *data: tuple[bytes]):
         data = b"".join(data)
         # Prepend ident
-        idd = self.name_id.upload[name]
-        # self.logger.info(f'{idd}')
-        data = self.buff_type.pack_varint(idd) + data
+        try:
+            idd = self.name_id.upload[name]
+            # self.logger.info(f'{idd}')
+            data = self.buff_type.pack_varint(idd) + data
 
-        # Pack packet
-        data = self.buff_type.pack_packet(data, self.compression_threshold)
+            # Pack packet
+            data = self.buff_type.pack_packet(data, self.compression_threshold)
 
-        # Encrypt
-        data = self.cipher.encrypt(data)
+            # Encrypt
+            data = self.cipher.encrypt(data)
 
-        # Send
-        if not self.is_close:
-            try:
-                self.soket.send(data)
-                self.logger.debug(f'Packet "{name}" sended')
-            except (ConnectionAbortedError, OSError):
-                self.logger.error(f'Packet: "{name}" not send, socket is closed')
-                # raise ProtocolError(f'Packet: "{name}" not send, socket is closed')
+            # Send
+            if not self.is_close:
+                try:
+                    self.soket.send(data)
+                    self.logger.debug(f'Packet "{name}" sended')
+                except (ConnectionAbortedError, OSError, socket.gaierror, socket.error, socket.herror):
+                    self.logger.error(f'Packet: "{name}" not send, socket is closed')
+                    if not self.is_close:
+                        self.close()
+        except KeyError:
+            self.logger.critical(f'Packet: "{name}" not send, not found in self.name_id.upload, state: {self.name_id.state}, self.is_close: {self.is_close}')
+            if not self.is_close:
+                self.close()
 
     def get_buff_type(self, protocol_version):
         for ver, cls in reversed(buff_types):
@@ -191,14 +220,20 @@ class Protocol:
 
     def connect(self):
         if self.is_close:
+            self.recv_buff = Buffer1_7()
+            self.clear_dispatcher()
+            self.compression_threshold = -1
             self.is_close = False
+
             self.soket = socket.create_connection((self.ip, self.port), timeout=self.timeout)
             self.logger.info(f'Client connected to "{self.ip}:{self.port}"')
+                    
+            # self.setup()
             self.d_received = threading.Thread(target=self.data_received, daemon=self.daemon)
             self.lock_data_received.set()
             self.d_received.start()
             self.setup()
-            
+
 
 class Protocol_cproxi(Protocol):
     __log_level = logging.INFO
@@ -232,7 +267,7 @@ class Protocol_cproxi(Protocol):
     def unheandler(self, name: str, byff: Buffer1_19_1):
         # if len(byff.buff) > 200: print(f'<-- {name}:{byff.buff[:200]} . . .')
         # else: print(f'<-- {name}:{byff.buff}')
-        self.server.send_packet(name, byff.read())
+        self.server.send_packet_no_wait(name, byff.read())
 
     def close(self):
         if not self.is_close:
@@ -265,7 +300,6 @@ class Protocol_sproxi:
         self.soket = user_socket
         self.addres = addres
         self.lock_data_received = threading.Event()
-        self.lock_data_received_2 = threading.Event()
         
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(self.__log_level)
@@ -274,9 +308,10 @@ class Protocol_sproxi:
         self.port_destination = settings.port_destination
         self.ip_source = settings.ip_source
         self.port_source = settings.port_source
+        self.settings = settings
         
         # self.logger.info('{}'.format(getattr(self, 'unheandler', None)))
-        self.dispatcher = Dispatcher(getattr(self, 'unheandler', None), self.lock_data_received_2)
+        self.dispatcher = Dispatcher(getattr(self, 'unheandler', None), settings.daemon)
         self.on = self.dispatcher.on
         self.once = self.dispatcher.once
         self.regenerate_name_id(settings.version)
@@ -302,7 +337,7 @@ class Protocol_sproxi:
     def unheandler(self, name: str, byff: Buffer1_19_1):
         # if len(byff.buff) > 200: print(f'--> {name}:{byff.buff[:200]} . . .')
         # else: print(f'--> {name}:{byff.buff}')
-        self.client.send_packet(name, byff.read())
+        self.client.send_packet_no_wait(name, byff.read())
 
     def data_received(self):
         while not self.is_close:
@@ -340,17 +375,10 @@ class Protocol_sproxi:
                         self.recv_buff.restore()
                         break
                     # Identify the packet
-                    # self.logger.info(f'1 {self.lock_data_received.is_set()}')
                     self.lock_data_received.wait()
-                    # self.logger.info('1 wait')
-                    self.lock_data_received_2.clear()
                     name = self.name_id.upload[buff.unpack_varint()]
-                    # self.logger.debug(name)
                     # Dispatch the packet
                     self.dispatcher.packet_received(name, buff)
-                    # self.logger.info(f'2 {self.lock_data_received_2.is_set()}')
-                    self.lock_data_received_2.wait()
-                    # self.logger.info('2 wait')
             except (ConnectionAbortedError, OSError):
                 self.close()
                 break
@@ -443,13 +471,16 @@ class Proxi:
     protocol = Protocol_sproxi
     is_close = False
 
-    def create_server(self, settings: Server_Settings):
-        self.server = socket.create_server((settings.ip_source, settings.port_source))
-        self.is_close = False
-        
-        while not self.is_close:
-            self.server.listen()
-            self.protocol(settings, *self.server.accept())
+    def create_server(self, settings: Server_Settings, in_thread: bool = False):
+        if in_thread:
+            threading.Thread(target=self.create_server, args=(settings, False), daemon=settings.daemon).start()
+        else:
+            self.server = socket.create_server((settings.ip_source, settings.port_source))
+            self.is_close = False
+
+            while not self.is_close:
+                self.server.listen()
+                self.protocol(settings, *self.server.accept())
 
     def close_server(self):
         self.is_close = True

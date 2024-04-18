@@ -8,7 +8,7 @@ def readme():
 
 setup(
   name='bot4',
-  version='0.0.5',
+  version='0.0.6',
   author='Jeelesk',
   author_email='eywevynriimnetyiu@gmail.com',
   description='This is a module for creating bots',
