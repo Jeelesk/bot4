@@ -8,9 +8,6 @@ from bot4.types.registry import OpaqueRegistry
 from bot4.types.uuid import UUID
 
 
-directions = ("down", "up", "north", "south", "west", "east")
-
-
 class Buffer1_7(object):
     buff = b""
     pos = 0
@@ -22,6 +19,10 @@ class Buffer1_7(object):
 
     def __len__(self):
         return len(self.buff) - self.pos
+
+    def clear(self):
+        self.buff = b''
+        self.pos = 0
 
     def copy(self):
         self2 = self.__class__(self.buff)
@@ -496,23 +497,6 @@ class Buffer1_7(object):
             else:
                 raise ValueError(f"Unknown entity metadata type: {ty:d}")
             metadata[ty, key] = val
-
-    # Direction ---------------------------------------------------------------
-
-    @classmethod
-    def pack_direction(cls, direction):
-        """
-        Packs a direction.
-        """
-
-        return cls.pack_varint(directions.index(direction))
-
-    def unpack_direction(self):
-        """
-        Unpacks a direction.
-        """
-
-        return directions[self.unpack_varint()]
 
     # Rotation ----------------------------------------------------------------
 
